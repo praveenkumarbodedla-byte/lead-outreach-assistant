@@ -1,22 +1,65 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { computeStats, getCategories, STATUS_COLORS } from '../utils/dataUtils';
 import MessagePreview from './MessagePreview';
+import { supabase } from '../utils/supabaseClient';
 
 export default function Dashboard({ leads, onUpdateLead }) {
   const [previewLead, setPreviewLead] = useState(null);
-  const [quickReplyFilter, setQuickReplyFilter] = useState('active'); // 'active' (Contacted/Replied) or 'all'
+  const [quickReplyFilter, setQuickReplyFilter] = useState('active'); // 'active' (New/Contacted/Replied) or 'all'
+  const [logs, setLogs] = useState([]);
 
   const stats = computeStats(leads);
   const categories = getCategories(leads);
 
   const statCards = [
     { label: 'Total Leads', value: stats.total, icon: '👥', color: '#6366f1', glow: '#6366f1' },
-    { label: 'Not Contacted', value: stats.notContacted, icon: '⏳', color: '#6b7280', glow: '#6b7280' },
-    { label: 'Contacted', value: stats.contacted, icon: '📞', color: '#3b82f6', glow: '#3b82f6' },
-    { label: 'Replied', value: stats.replied, icon: '💬', color: '#8b5cf6', glow: '#8b5cf6' },
-    { label: 'Interested', value: stats.interested, icon: '🌟', color: '#10b981', glow: '#10b981' },
-    { label: 'Not Interested', value: stats.notInterested, icon: '❌', color: '#ef4444', glow: '#ef4444' },
+    { label: 'New Leads', value: stats.newLeads, icon: '⏳', color: '#6b7280', glow: '#6b7280' },
+    { label: 'Contacted Leads', value: stats.contacted, icon: '📞', color: '#3b82f6', glow: '#3b82f6' },
+    { label: 'Replied Leads', value: stats.replied, icon: '💬', color: '#8b5cf6', glow: '#8b5cf6' },
+    { label: 'Not Interested Leads', value: stats.notInterested, icon: '❌', color: '#ef4444', glow: '#ef4444' },
   ];
+
+  // Fetch recent activity logs from Supabase with realtime updates
+  useEffect(() => {
+    const fetchLogs = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('activity_logs')
+          .select('*, leads(business_name)')
+          .order('timestamp', { ascending: false })
+          .limit(10);
+        if (error) throw error;
+        setLogs(data || []);
+      } catch (err) {
+        console.error('Error fetching logs:', err);
+      }
+    };
+
+    fetchLogs();
+
+    const channel = supabase
+      .channel('dashboard-activity-logs')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'activity_logs' }, async (payload) => {
+        // Fetch the business_name for the new log
+        const { data } = await supabase
+          .from('leads')
+          .select('business_name')
+          .eq('id', payload.new.lead_id)
+          .single();
+
+        const newLog = {
+          ...payload.new,
+          leads: data || { business_name: 'Unknown Lead' }
+        };
+
+        setLogs(prev => [newLog, ...prev.slice(0, 9)]);
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   // Category breakdown
   const catCounts = {};
@@ -39,7 +82,7 @@ export default function Dashboard({ leads, onUpdateLead }) {
   const quickReplyLeads = leads
     .filter(lead => {
       if (quickReplyFilter === 'active') {
-        return lead.status === 'Contacted' || lead.status === 'Replied' || lead.status === 'Not Contacted';
+        return lead.status === 'Contacted' || lead.status === 'Replied' || lead.status === 'New';
       }
       return true;
     })
@@ -145,9 +188,9 @@ export default function Dashboard({ leads, onUpdateLead }) {
             { label: 'Interested', value: stats.interested, color: '#10b981' },
             { label: 'Replied', value: stats.replied, color: '#8b5cf6' },
             { label: 'Contacted', value: stats.contacted, color: '#3b82f6' },
-            { label: 'Not Contacted', value: stats.notContacted, color: '#6b7280' },
+            { label: 'New', value: stats.newLeads, color: '#6b7280' },
             { label: 'Not Interested', value: stats.notInterested, color: '#ef4444' },
-            { label: 'Follow-up', value: stats.followUp, color: '#f59e0b' },
+            { label: 'Follow-up Needed', value: stats.followUp, color: '#f59e0b' },
           ].filter(s => s.value > 0).map(s => (
             <div key={s.label} className="cat-bar">
               <div className="cat-bar-label" style={{ color: s.color, fontWeight: 600 }}>{s.label}</div>
@@ -163,7 +206,34 @@ export default function Dashboard({ leads, onUpdateLead }) {
         </div>
       </div>
 
-      {/* Quick Response Language Panel (Requirement 5 & 6 & 7) */}
+      {/* Activity Logs Audit Table */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 20, marginBottom: 20 }}>
+        <div className="glass-card" style={{ padding: 24 }}>
+          <div style={{ fontWeight: 700, marginBottom: 16, fontSize: '1rem' }}>🛡️ Recent Activity & Audits</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 300, overflowY: 'auto', paddingRight: 8 }}>
+            {logs.length === 0 ? (
+              <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem', padding: '20px 0' }}>
+                No activities logged yet.
+              </div>
+            ) : logs.map(log => (
+              <div key={log.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: 'rgba(255,255,255,0.02)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}>
+                <div>
+                  <span style={{ fontWeight: 600, color: 'var(--accent-light)' }}>{log.user_name}</span>{' '}
+                  <span style={{ color: 'var(--text-secondary)' }}>{log.action}</span>
+                  {log.leads?.business_name && (
+                    <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}> (for {log.leads.business_name})</span>
+                  )}
+                </div>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                  {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Quick Response Language Panel */}
       <div className="glass-card" style={{ padding: 24, marginBottom: 20 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <div>

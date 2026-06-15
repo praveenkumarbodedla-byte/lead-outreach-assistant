@@ -67,7 +67,7 @@ export default function MessagePreview({ lead, onClose, onUpdateLead }) {
         timestamp: new Date().toISOString(), message, language: activeLang,
       }],
     };
-    if (lead.status === 'Not Contacted') { updates.status = 'Contacted'; updates.contactedAt = new Date().toISOString(); }
+    if (lead.status === 'New') { updates.status = 'Contacted'; updates.contactedAt = new Date().toISOString(); }
     onUpdateLead(lead.id, updates);
   };
 

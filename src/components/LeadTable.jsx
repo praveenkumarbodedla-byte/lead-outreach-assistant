@@ -4,7 +4,7 @@ import MessagePreview from './MessagePreview';
 
 const PAGE_SIZE = 15;
 
-export default function LeadTable({ leads, onStatusChange, onNotesChange, onFollowUpDate, onUpdateLead }) {
+export default function LeadTable({ leads, onStatusChange, onNotesChange, onFollowUpDate, onUpdateLead, currentUser }) {
   const [search, setSearch] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
   const [filterCity, setFilterCity] = useState('');
@@ -176,13 +176,14 @@ export default function LeadTable({ leads, onStatusChange, onNotesChange, onFoll
                 <th className="hide-mobile">Category</th>
                 <th className="hide-mobile">City</th>
                 <th>Status</th>
+                <th>Assigned To</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {pageLeads.length === 0 ? (
                 <tr>
-                  <td colSpan={7} style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-muted)' }}>
+                  <td colSpan={8} style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-muted)' }}>
                     No leads match your filters.
                   </td>
                 </tr>
@@ -197,7 +198,7 @@ export default function LeadTable({ leads, onStatusChange, onNotesChange, onFoll
                   <td style={{ maxWidth: 220 }}>
                     <div className="truncate" style={{ fontWeight: 600 }}>{lead.businessName}</div>
                     
-                    {/* Language Badges (Requirement 4) */}
+                    {/* Language Badges */}
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4, marginBottom: 4 }}>
                       {lead.selectedLanguage && (
                         <span style={{ fontSize: '0.68rem', padding: '1px 5px', background: 'rgba(99,102,241,0.12)', borderRadius: 4, color: 'var(--accent-light)' }} title="Last sent message language">
@@ -273,6 +274,51 @@ export default function LeadTable({ leads, onStatusChange, onNotesChange, onFoll
                         <option key={s} value={s}>{s}</option>
                       ))}
                     </select>
+                  </td>
+
+                  {/* Assigned To */}
+                  <td>
+                    {lead.assignedTo ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{
+                          fontSize: '0.78rem',
+                          padding: '4px 10px',
+                          background: 'rgba(99,102,241,0.12)',
+                          borderRadius: 99,
+                          color: 'var(--accent-light)',
+                          fontWeight: 600,
+                          whiteSpace: 'nowrap'
+                        }}>
+                          👤 {lead.assignedTo}
+                        </span>
+                        {lead.assignedTo === currentUser && (
+                          <button
+                            onClick={() => onUpdateLead(lead.id, { assignedTo: null })}
+                            style={{
+                              background: 'transparent',
+                              border: 'none',
+                              color: 'var(--red)',
+                              fontSize: '1rem',
+                              padding: 0,
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center'
+                            }}
+                            title="Unassign"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        style={{ padding: '4px 10px', fontSize: '0.75rem', borderColor: 'rgba(255,255,255,0.08)' }}
+                        onClick={() => onUpdateLead(lead.id, { assignedTo: currentUser })}
+                      >
+                        Claim 🙋‍♂️
+                      </button>
+                    )}
                   </td>
 
                   {/* Actions */}

@@ -70,7 +70,7 @@ export function cleanLeads(rawRows) {
       phoneDisplay: formatPhone(phone),
       category: category || 'General',
       city: extractCity(category, businessName),
-      status: 'Not Contacted',
+      status: 'New',
       contactedAt: null,
       repliedAt: null,
       notes: '',
@@ -123,7 +123,7 @@ Varshith: +91 9440025408`;
 
 మేము మీ వ్యాపారం కోసం ఒక ప్రొఫెషనల్ వెబ్సైట్ ని క్రియేట్ చేసి, ఒక ఉచిత డెమోను చూపించగలము.
 
-మీకు ఆసక్తి ఉంటే దయచేసి రిప్లై ఇవ్వండి.
+ మీకు ఆసక్తి ఉంటే దయచేసి రిప్లై ఇవ్వండి.
 
 ${contacts}`;
   }
@@ -178,7 +178,7 @@ ${contacts}`;
 export function computeStats(leads) {
   const stats = {
     total: leads.length,
-    notContacted: 0,
+    newLeads: 0,
     contacted: 0,
     replied: 0,
     interested: 0,
@@ -187,7 +187,7 @@ export function computeStats(leads) {
   };
   for (const lead of leads) {
     switch (lead.status) {
-      case 'Not Contacted': stats.notContacted++; break;
+      case 'New': stats.newLeads++; break;
       case 'Contacted': stats.contacted++; break;
       case 'Replied': stats.replied++; break;
       case 'Interested': stats.interested++; break;
@@ -213,7 +213,7 @@ export function getCities(leads) {
 }
 
 export const STATUS_OPTIONS = [
-  'Not Contacted',
+  'New',
   'Contacted',
   'Replied',
   'Interested',
@@ -222,7 +222,7 @@ export const STATUS_OPTIONS = [
 ];
 
 export const STATUS_COLORS = {
-  'Not Contacted': '#6b7280',
+  'New': '#6b7280',
   'Contacted': '#3b82f6',
   'Replied': '#8b5cf6',
   'Interested': '#10b981',
