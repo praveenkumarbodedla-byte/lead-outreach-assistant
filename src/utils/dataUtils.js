@@ -229,3 +229,12 @@ export const STATUS_COLORS = {
   'Not Interested': '#ef4444',
   'Follow-up Needed': '#f59e0b',
 };
+
+export const USERS = [
+  'Praveen',
+  'Dhanush',
+  'Varshith',
+  'sathwik',
+  'ramteja'
+];
+

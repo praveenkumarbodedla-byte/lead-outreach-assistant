@@ -1,16 +1,17 @@
 import React, { useState, useMemo } from 'react';
-import { STATUS_COLORS, STATUS_OPTIONS, getCategories, getCities } from '../utils/dataUtils';
+import { STATUS_COLORS, STATUS_OPTIONS, getCategories, getCities, USERS } from '../utils/dataUtils';
 import MessagePreview from './MessagePreview';
 
 const PAGE_SIZE = 15;
 
-export default function LeadTable({ leads, onStatusChange, onNotesChange, onFollowUpDate, onUpdateLead, currentUser }) {
+export default function LeadTable({ leads, onStatusChange, onNotesChange, onFollowUpDate, onUpdateLead, currentUser, userRole }) {
   const [search, setSearch] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
   const [filterCity, setFilterCity] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [filterSelectedLang, setFilterSelectedLang] = useState('');
   const [filterRepliedLang, setFilterRepliedLang] = useState('');
+  const [filterAssignment, setFilterAssignment] = useState('all'); // 'all' or 'my'
   const [page, setPage] = useState(1);
   const [previewLead, setPreviewLead] = useState(null);
   const [editingNotes, setEditingNotes] = useState(null);
@@ -28,9 +29,10 @@ export default function LeadTable({ leads, onStatusChange, onNotesChange, onFoll
       if (filterStatus && l.status !== filterStatus) return false;
       if (filterSelectedLang && l.selectedLanguage !== filterSelectedLang) return false;
       if (filterRepliedLang && l.repliedLanguage !== filterRepliedLang) return false;
+      if (filterAssignment === 'my' && l.assignedTo !== currentUser) return false;
       return true;
     });
-  }, [leads, search, filterCategory, filterCity, filterStatus, filterSelectedLang, filterRepliedLang]);
+  }, [leads, search, filterCategory, filterCity, filterStatus, filterSelectedLang, filterRepliedLang, filterAssignment, currentUser]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
@@ -43,10 +45,11 @@ export default function LeadTable({ leads, onStatusChange, onNotesChange, onFoll
     setFilterStatus('');
     setFilterSelectedLang('');
     setFilterRepliedLang('');
+    setFilterAssignment('all');
     setPage(1);
   };
 
-  const hasFilters = search || filterCategory || filterCity || filterStatus || filterSelectedLang || filterRepliedLang;
+  const hasFilters = search || filterCategory || filterCity || filterStatus || filterSelectedLang || filterRepliedLang || filterAssignment !== 'all';
 
   const startNoteEdit = (lead) => {
     setEditingNotes(lead.id);
@@ -127,6 +130,17 @@ export default function LeadTable({ leads, onStatusChange, onNotesChange, onFoll
           >
             <option value="">All Statuses</option>
             {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+
+          {/* Assignment Filter */}
+          <select
+            className="form-input"
+            style={{ flex: '1 1 140px', minWidth: 140 }}
+            value={filterAssignment}
+            onChange={e => { setFilterAssignment(e.target.value); setPage(1); }}
+          >
+            <option value="all">👥 All Leads</option>
+            <option value="my">👤 My Leads</option>
           </select>
 
           {/* Selected Language Filter */}
@@ -278,46 +292,48 @@ export default function LeadTable({ leads, onStatusChange, onNotesChange, onFoll
 
                   {/* Assigned To */}
                   <td>
-                    {lead.assignedTo ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{
+                    {userRole === 'admin' ? (
+                      <select
+                        className="form-input"
+                        style={{
+                          padding: '4px 8px',
                           fontSize: '0.78rem',
-                          padding: '4px 10px',
-                          background: 'rgba(99,102,241,0.12)',
+                          width: 'auto',
+                          color: lead.assignedTo ? 'var(--accent-light)' : 'var(--text-secondary)',
+                          background: lead.assignedTo ? 'rgba(99, 102, 241, 0.12)' : 'rgba(255, 255, 255, 0.03)',
+                          border: lead.assignedTo ? '1px solid rgba(99, 102, 241, 0.3)' : '1px solid var(--border)',
                           borderRadius: 99,
-                          color: 'var(--accent-light)',
-                          fontWeight: 600,
-                          whiteSpace: 'nowrap'
-                        }}>
-                          👤 {lead.assignedTo}
-                        </span>
-                        {lead.assignedTo === currentUser && (
-                          <button
-                            onClick={() => onUpdateLead(lead.id, { assignedTo: null })}
-                            style={{
-                              background: 'transparent',
-                              border: 'none',
-                              color: 'var(--red)',
-                              fontSize: '1rem',
-                              padding: 0,
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center'
-                            }}
-                            title="Unassign"
-                          >
-                            ✕
-                          </button>
-                        )}
-                      </div>
-                    ) : (
-                      <button
-                        className="btn btn-ghost btn-sm"
-                        style={{ padding: '4px 10px', fontSize: '0.75rem', borderColor: 'rgba(255,255,255,0.08)' }}
-                        onClick={() => onUpdateLead(lead.id, { assignedTo: currentUser })}
+                          minWidth: 130,
+                          fontWeight: lead.assignedTo ? 600 : 'normal'
+                        }}
+                        value={lead.assignedTo || ''}
+                        onChange={e => onUpdateLead(lead.id, { assignedTo: e.target.value || null })}
                       >
-                        Claim 🙋‍♂️
-                      </button>
+                        <option value="" style={{ background: '#0a0e1a', color: 'var(--text-muted)' }}>👤 Unassigned</option>
+                        {USERS.map(user => (
+                          <option key={user} value={user} style={{ background: '#0a0e1a', color: 'var(--text-primary)' }}>
+                            👤 {user}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div 
+                        className="admin-only-restricted"
+                        style={{
+                          display: 'inline-flex',
+                          padding: '6px 12px',
+                          fontSize: '0.78rem',
+                          color: lead.assignedTo ? 'var(--accent-light)' : 'var(--text-muted)',
+                          background: lead.assignedTo ? 'rgba(99, 102, 241, 0.08)' : 'rgba(255, 255, 255, 0.02)',
+                          border: '1px solid var(--border)',
+                          borderRadius: 99,
+                          whiteSpace: 'nowrap',
+                          alignItems: 'center',
+                          gap: 6
+                        }}
+                      >
+                        👤 {lead.assignedTo || 'Unassigned'}
+                      </div>
                     )}
                   </td>
 

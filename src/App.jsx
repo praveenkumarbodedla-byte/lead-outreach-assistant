@@ -8,8 +8,9 @@ import FollowUpReminder from './components/FollowUpReminder';
 import ExportPanel from './components/ExportPanel';
 import PinScreen from './components/PinScreen';
 import ProtectedRoute from './components/ProtectedRoute';
-import { supabase } from './utils/supabaseClient';
+import { supabase, setSupabaseUsername } from './utils/supabaseClient';
 import { computeStats } from './utils/dataUtils';
+import TeamPanel from './components/TeamPanel';
 
 const TABS = [
   { id: 'dashboard', label: 'Dashboard', icon: '📊' },
@@ -160,6 +161,7 @@ export default function App() {
       <Route path="/import" element={<ProtectedRoute><MainApp activeTab="import" /></ProtectedRoute>} />
       <Route path="/followup" element={<ProtectedRoute><MainApp activeTab="followup" /></ProtectedRoute>} />
       <Route path="/export" element={<ProtectedRoute><MainApp activeTab="export" /></ProtectedRoute>} />
+      <Route path="/users" element={<ProtectedRoute><MainApp activeTab="users" /></ProtectedRoute>} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   );
@@ -172,9 +174,52 @@ function MainApp({ activeTab }) {
   const [toasts, setToasts] = useState([]);
   const [menuOpen, setMenuOpen] = useState(false);
   const [userName, setUserName] = useState(() => localStorage.getItem('auth_user_name') || '');
+  const [userRole, setUserRole] = useState('member');
   const [localLeadsCount, setLocalLeadsCount] = useState(0);
   const [migrating, setMigrating] = useState(false);
   const [migrationReport, setMigrationReport] = useState(null);
+
+  // Set headers and fetch user role
+  useEffect(() => {
+    if (!userName) return;
+
+    // Set custom session headers for RLS
+    setSupabaseUsername(userName);
+
+    const getRole = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('username', userName)
+          .single();
+
+        if (error) {
+          if (error.code === 'PGRST116') {
+            // User not found, auto-insert defaults (Praveen=admin, others=member)
+            const initialRole = userName === 'Praveen' ? 'admin' : 'member';
+            const { data: newRole, error: insertError } = await supabase
+              .from('user_roles')
+              .insert({ username: userName, role: initialRole })
+              .select('role')
+              .single();
+
+            if (insertError) throw insertError;
+            setUserRole(newRole?.role || initialRole);
+          } else {
+            throw error;
+          }
+        } else {
+          setUserRole(data?.role || 'member');
+        }
+      } catch (err) {
+        console.error('Error checking user role:', err);
+        setUserRole(userName === 'Praveen' ? 'admin' : 'member');
+      }
+    };
+
+    getRole();
+  }, [userName]);
 
   useEffect(() => {
     try {
@@ -454,11 +499,19 @@ function MainApp({ activeTab }) {
 
       if (error) throw error;
 
-      const keys = Object.keys(updates).join(', ');
+      let logAction = '';
+      if (updates.assignedTo !== undefined) {
+        logAction = updates.assignedTo ? `Assigned lead to ${updates.assignedTo}` : 'Unassigned lead';
+        addToast(updates.assignedTo ? `Lead assigned to ${updates.assignedTo}` : 'Lead unassigned', 'success');
+      } else {
+        const keys = Object.keys(updates).join(', ');
+        logAction = `Updated lead attributes: ${keys}`;
+      }
+
       await supabase.from('activity_logs').insert({
         lead_id: id,
         user_name: userName,
-        action: `Updated lead attributes: ${keys}`,
+        action: logAction,
       });
     } catch (err) {
       console.error('Update lead error:', err);
@@ -485,104 +538,114 @@ function MainApp({ activeTab }) {
 
   const stats = computeStats(leads);
   const followUpCount = leads.filter(l => l.status === 'Follow-up Needed').length;
+  const isAdmin = userRole === 'admin';
+    const visibleTabs = [
+      { id: 'dashboard', label: 'Dashboard', icon: '📊' },
+      { id: 'leads', label: 'Leads', icon: '📋' },
+      isAdmin && { id: 'import', label: 'Import', icon: '📥' },
+      { id: 'followup', label: 'Follow-ups', icon: '⏰' },
+      { id: 'export', label: 'Export', icon: '📤' },
+      isAdmin && { id: 'users', label: 'Team', icon: '👥' },
+    ].filter(Boolean);
 
-  return (
-    <>
-      {!userName && <NamePromptModal onSave={handleSaveUserName} />}
-
-      {/* App Shell */}
-      <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-        {/* Header */}
-        <header style={{
-          background: 'rgba(10,14,26,0.85)',
-          backdropFilter: 'blur(20px)',
-          borderBottom: '1px solid var(--border)',
-          padding: '0 24px',
-          height: 64,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          position: 'sticky',
-          top: 0,
-          zIndex: 100,
-        }}>
-          {/* Logo */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{
-              width: 36, height: 36, borderRadius: 10,
-              background: 'linear-gradient(135deg, var(--accent), var(--purple))',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '1.2rem', boxShadow: '0 4px 14px rgba(99,102,241,0.4)',
-            }}>
-              🚀
-            </div>
-            <div>
-              <div style={{ fontWeight: 800, fontSize: '1rem', lineHeight: 1.2 }}>Lead Outreach</div>
-              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', lineHeight: 1 }}>Assistant</div>
-            </div>
-          </div>
-
-          {/* Center: quick stats */}
-          <div style={{ display: 'flex', gap: 20, alignItems: 'center' }} className="hide-mobile">
-            {[
-              { label: 'Total', val: stats.total, color: 'var(--accent-light)' },
-              { label: 'Interested', val: stats.interested, color: 'var(--green)' },
-              { label: 'Follow-ups', val: followUpCount, color: 'var(--orange)' },
-            ].map(s => (
-              <div key={s.label} style={{ textAlign: 'center' }}>
-                <div style={{ fontWeight: 700, fontSize: '1.1rem', color: s.color }}>{s.val}</div>
-                <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{s.label}</div>
+    return (
+      <>
+        {!userName && <NamePromptModal onSave={handleSaveUserName} />}
+  
+        {/* App Shell */}
+        <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+          {/* Header */}
+          <header style={{
+            background: 'rgba(10,14,26,0.85)',
+            backdropFilter: 'blur(20px)',
+            borderBottom: '1px solid var(--border)',
+            padding: '0 24px',
+            height: 64,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            position: 'sticky',
+            top: 0,
+            zIndex: 100,
+          }}>
+            {/* Logo */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{
+                width: 36, height: 36, borderRadius: 10,
+                background: 'linear-gradient(135deg, var(--accent), var(--purple))',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '1.2rem', boxShadow: '0 4px 14px rgba(99,102,241,0.4)',
+              }}>
+                🚀
               </div>
-            ))}
-          </div>
-
-          {/* Right: actions */}
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-            {leads.length > 0 && (
-              <button
-                className="btn btn-ghost btn-sm hide-mobile"
-                onClick={handleClearAll}
-                style={{ color: 'var(--red)', borderColor: 'rgba(239,68,68,0.3)' }}
-              >
-                🗑️ Clear All
-              </button>
-            )}
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', padding: '4px 10px', background: 'rgba(255,255,255,0.05)', borderRadius: 99, border: '1px solid var(--border)' }}>
-              {loading ? '🔄 Loading...' : `${leads.length} leads`}
-            </div>
-
-            {userName && (
-              <div
-                style={{
-                  fontSize: '0.75rem',
-                  color: 'var(--text-secondary)',
-                  padding: '4px 10px',
-                  background: 'rgba(255,255,255,0.05)',
-                  borderRadius: 99,
-                  border: '1px solid var(--border)',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 5
-                }}
-                onClick={() => {
-                  const newName = prompt('Enter your name:', userName);
-                  if (newName && newName.trim()) {
-                    localStorage.setItem('auth_user_name', newName.trim());
-                    setUserName(newName.trim());
-                  }
-                }}
-                title="Click to edit your name"
-              >
-                👤 {userName}
+              <div>
+                <div style={{ fontWeight: 800, fontSize: '1rem', lineHeight: 1.2 }}>Lead Outreach</div>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', lineHeight: 1 }}>Assistant</div>
               </div>
-            )}
+            </div>
+  
+            {/* Center: quick stats */}
+            <div style={{ display: 'flex', gap: 20, alignItems: 'center' }} className="hide-mobile">
+              {[
+                { label: 'Total', val: stats.total, color: 'var(--accent-light)' },
+                { label: 'Interested', val: stats.interested, color: 'var(--green)' },
+                { label: 'Follow-ups', val: followUpCount, color: 'var(--orange)' },
+              ].map(s => (
+                <div key={s.label} style={{ textAlign: 'center' }}>
+                  <div style={{ fontWeight: 700, fontSize: '1.1rem', color: s.color }}>{s.val}</div>
+                  <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{s.label}</div>
+                </div>
+              ))}
+            </div>
+  
+            {/* Right: actions */}
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+              {leads.length > 0 && isAdmin && (
+                <button
+                  className="btn btn-ghost btn-sm hide-mobile"
+                  onClick={handleClearAll}
+                  style={{ color: 'var(--red)', borderColor: 'rgba(239,68,68,0.3)' }}
+                >
+                  🗑️ Clear All
+                </button>
+              )}
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', padding: '4px 10px', background: 'rgba(255,255,255,0.05)', borderRadius: 99, border: '1px solid var(--border)' }}>
+                {loading ? '🔄 Loading...' : `${leads.length} leads`}
+              </div>
+  
+              {userName && (
+                <div
+                  style={{
+                    fontSize: '0.75rem',
+                    color: 'var(--text-secondary)',
+                    padding: '4px 10px',
+                    background: 'rgba(255,255,255,0.05)',
+                    borderRadius: 99,
+                    border: '1px solid var(--border)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 5
+                  }}
+                  onClick={() => {
+                    const newName = prompt('Enter your name:', userName);
+                    if (newName && newName.trim()) {
+                      localStorage.setItem('auth_user_name', newName.trim());
+                      setUserName(newName.trim());
+                    }
+                  }}
+                  title="Click to edit your name"
+                >
+                  👤 {userName} <span style={{ color: isAdmin ? '#fbbf24' : 'var(--text-muted)', fontWeight: 600 }}>({userRole})</span>
+                </div>
+              )}
 
             <button
               className="btn btn-ghost btn-sm"
               onClick={() => {
                 localStorage.removeItem('auth_pin_success');
                 localStorage.removeItem('auth_user_name');
+                setSupabaseUsername(null);
                 navigate('/login', { replace: true });
               }}
               style={{
@@ -602,7 +665,7 @@ function MainApp({ activeTab }) {
         {/* Tab Navigation */}
         <div style={{ padding: '12px 24px', borderBottom: '1px solid var(--border)', background: 'rgba(10,14,26,0.5)', backdropFilter: 'blur(10px)' }}>
           <div className="tab-bar">
-            {TABS.map(tab => (
+            {visibleTabs.map(tab => (
               <button
                 key={tab.id}
                 className={`tab-btn ${activeTab === tab.id ? 'active' : ''}`}
@@ -665,7 +728,7 @@ function MainApp({ activeTab }) {
           ) : (
             <>
               {activeTab === 'dashboard' && (
-                <Dashboard leads={leads} onUpdateLead={handleUpdateLead} />
+                <Dashboard leads={leads} onUpdateLead={handleUpdateLead} currentUser={userName} userRole={userRole} />
               )}
               {activeTab === 'leads' && (
                 <LeadTable
@@ -675,10 +738,11 @@ function MainApp({ activeTab }) {
                   onFollowUpDate={handleFollowUpDate}
                   onUpdateLead={handleUpdateLead}
                   currentUser={userName}
+                  userRole={userRole}
                 />
               )}
               {activeTab === 'import' && (
-                <ImportPanel onImport={handleImport} existingCount={leads.length} />
+                isAdmin ? <ImportPanel onImport={handleImport} existingCount={leads.length} /> : <Navigate to="/dashboard" replace />
               )}
               {activeTab === 'followup' && (
                 <FollowUpReminder
@@ -686,10 +750,15 @@ function MainApp({ activeTab }) {
                   onStatusChange={handleStatusChange}
                   onFollowUpDate={handleFollowUpDate}
                   onUpdateLead={handleUpdateLead}
+                  currentUser={userName}
+                  userRole={userRole}
                 />
               )}
               {activeTab === 'export' && (
                 <ExportPanel leads={leads} />
+              )}
+              {activeTab === 'users' && (
+                isAdmin ? <TeamPanel userRole={userRole} currentUser={userName} /> : <Navigate to="/dashboard" replace />
               )}
             </>
           )}

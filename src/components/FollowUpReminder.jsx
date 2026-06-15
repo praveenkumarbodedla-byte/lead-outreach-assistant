@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import MessagePreview from './MessagePreview';
 
-export default function FollowUpReminder({ leads, onStatusChange, onFollowUpDate, onUpdateLead }) {
+export default function FollowUpReminder({ leads, onStatusChange, onFollowUpDate, onUpdateLead, currentUser }) {
   const [previewLead, setPreviewLead] = useState(null);
   const timersRef = useRef({});
   const [now, setNow] = useState(() => new Date());
@@ -90,8 +90,29 @@ export default function FollowUpReminder({ leads, onStatusChange, onFollowUpDate
       {/* Info */}
       <div style={{ flex: 1, minWidth: 160 }}>
         <div style={{ fontWeight: 700, marginBottom: 2 }}>{lead.businessName}</div>
-        <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: 4 }}>
-          {lead.phoneDisplay} · {lead.category}
+        <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          <span>{lead.phoneDisplay}</span>
+          <span style={{ color: 'var(--text-muted)' }}>·</span>
+          <span>{lead.category}</span>
+          {lead.assignedTo && (
+            <>
+              <span style={{ color: 'var(--text-muted)' }}>·</span>
+              <span style={{
+                fontSize: '0.72rem',
+                padding: '2px 8px',
+                background: 'rgba(99,102,241,0.15)',
+                border: '1px solid rgba(99,102,241,0.3)',
+                borderRadius: 99,
+                color: 'var(--accent-light)',
+                fontWeight: 600,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4
+              }}>
+                👤 {lead.assignedTo}
+              </span>
+            </>
+          )}
         </div>
         {lead.notes && (
           <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>

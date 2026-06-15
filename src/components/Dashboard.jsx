@@ -3,7 +3,7 @@ import { computeStats, getCategories, STATUS_COLORS } from '../utils/dataUtils';
 import MessagePreview from './MessagePreview';
 import { supabase } from '../utils/supabaseClient';
 
-export default function Dashboard({ leads, onUpdateLead }) {
+export default function Dashboard({ leads, onUpdateLead, currentUser, userRole }) {
   const [previewLead, setPreviewLead] = useState(null);
   const [quickReplyFilter, setQuickReplyFilter] = useState('active'); // 'active' (New/Contacted/Replied) or 'all'
   const [logs, setLogs] = useState([]);
@@ -11,9 +11,14 @@ export default function Dashboard({ leads, onUpdateLead }) {
   const stats = computeStats(leads);
   const categories = getCategories(leads);
 
+  const myAssignedCount = leads.filter(l => l.assignedTo === currentUser).length;
+  const totalAssignedCount = leads.filter(l => !!l.assignedTo).length;
+
   const statCards = [
     { label: 'Total Leads', value: stats.total, icon: '👥', color: '#6366f1', glow: '#6366f1' },
     { label: 'New Leads', value: stats.newLeads, icon: '⏳', color: '#6b7280', glow: '#6b7280' },
+    { label: 'My Assigned Leads', value: myAssignedCount, icon: '👤', color: '#f59e0b', glow: '#f59e0b' },
+    { label: 'Total Assigned Leads', value: totalAssignedCount, icon: '📋', color: '#10b981', glow: '#10b981' },
     { label: 'Contacted Leads', value: stats.contacted, icon: '📞', color: '#3b82f6', glow: '#3b82f6' },
     { label: 'Replied Leads', value: stats.replied, icon: '💬', color: '#8b5cf6', glow: '#8b5cf6' },
     { label: 'Not Interested Leads', value: stats.notInterested, icon: '❌', color: '#ef4444', glow: '#ef4444' },
@@ -266,66 +271,89 @@ export default function Dashboard({ leads, onUpdateLead }) {
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {quickReplyLeads.map(lead => (
-              <div
-                key={lead.id}
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  padding: '12px 16px',
-                  background: 'rgba(255,255,255,0.02)',
-                  border: '1px solid var(--border)',
-                  borderRadius: 'var(--radius-md)',
-                  flexWrap: 'wrap',
-                  gap: 12
-                }}
-              >
-                <div>
-                  <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{lead.businessName}</div>
-                  <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 2, display: 'flex', gap: 6, alignItems: 'center' }}>
-                    <span>{lead.phoneDisplay}</span>
-                    <span style={{ color: 'var(--text-muted)' }}>·</span>
-                    <span style={{
-                      color: STATUS_COLORS[lead.status],
-                      fontWeight: 600
-                    }}>{lead.status}</span>
-                    {lead.repliedLanguage && (
+            {quickReplyLeads.map(lead => {
+              const canInteract = userRole === 'admin' || lead.assignedTo === currentUser;
+              return (
+                <div
+                  key={lead.id}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '12px 16px',
+                    background: 'rgba(255,255,255,0.02)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 'var(--radius-md)',
+                    flexWrap: 'wrap',
+                    gap: 12
+                  }}
+                >
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{lead.businessName}</div>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 2, display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <span>{lead.phoneDisplay}</span>
+                      <span style={{ color: 'var(--text-muted)' }}>·</span>
+                      <span style={{
+                        color: STATUS_COLORS[lead.status],
+                        fontWeight: 600
+                      }}>{lead.status}</span>
+                      {lead.repliedLanguage && (
+                        <>
+                          <span style={{ color: 'var(--text-muted)' }}>·</span>
+                          <span style={{ color: '#c084fc', fontStyle: 'italic' }}>🗣️ {lead.repliedLanguage}</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Quick Reply Buttons */}
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    {canInteract ? (
                       <>
-                        <span style={{ color: 'var(--text-muted)' }}>·</span>
-                        <span style={{ color: '#c084fc', fontStyle: 'italic' }}>🗣️ {lead.repliedLanguage}</span>
+                        {['Telugu', 'English', 'Hindi'].map(lang => (
+                          <button
+                            key={lang}
+                            onClick={() => handleQuickReplyLanguage(lead, lang)}
+                            className="btn btn-sm btn-ghost"
+                            style={{
+                              padding: '6px 12px',
+                              fontSize: '0.78rem',
+                              borderColor: lead.repliedLanguage === lang ? 'var(--accent)' : 'var(--border)',
+                              background: lead.repliedLanguage === lang ? 'rgba(99,102,241,0.1)' : 'transparent'
+                            }}
+                          >
+                            🗣️ {lang}
+                          </button>
+                        ))}
+                        <button
+                          onClick={() => setPreviewLead(lead)}
+                          className="btn btn-sm btn-primary"
+                          style={{ padding: '6px 12px', fontSize: '0.78rem' }}
+                        >
+                          🔍 Preview
+                        </button>
                       </>
+                    ) : (
+                      <div 
+                        className="admin-only-restricted"
+                        style={{
+                          padding: '6px 12px',
+                          fontSize: '0.78rem',
+                          color: 'var(--text-muted)',
+                          border: '1px solid var(--border)',
+                          borderRadius: 'var(--radius-sm)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 6
+                        }}
+                      >
+                        🔒 Locked (Unassigned)
+                      </div>
                     )}
                   </div>
                 </div>
-
-                {/* Quick Reply Buttons */}
-                <div style={{ display: 'flex', gap: 8 }}>
-                  {['Telugu', 'English', 'Hindi'].map(lang => (
-                    <button
-                      key={lang}
-                      onClick={() => handleQuickReplyLanguage(lead, lang)}
-                      className="btn btn-sm btn-ghost"
-                      style={{
-                        padding: '6px 12px',
-                        fontSize: '0.78rem',
-                        borderColor: lead.repliedLanguage === lang ? 'var(--accent)' : 'var(--border)',
-                        background: lead.repliedLanguage === lang ? 'rgba(99,102,241,0.1)' : 'transparent'
-                      }}
-                    >
-                      🗣️ {lang}
-                    </button>
-                  ))}
-                  <button
-                    onClick={() => setPreviewLead(lead)}
-                    className="btn btn-sm btn-primary"
-                    style={{ padding: '6px 12px', fontSize: '0.78rem' }}
-                  >
-                    🔍 Preview
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
